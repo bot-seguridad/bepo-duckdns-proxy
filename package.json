@@ -1,0 +1,9 @@
+{
+  "name": "proxy-duckdns-render",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Proxy inverso ligero para dos dominios DuckDNS alojados en una sola instancia Pterodactyl",
+  "type": "commonjs",
+  "scripts": {"start": "node server.js"},
+  "engines": {"node": ">=18"}
+}
