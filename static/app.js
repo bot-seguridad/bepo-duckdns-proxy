@@ -42,6 +42,11 @@
       url.select();
     }
   });
+  function hideFile() {
+    link.hidden = true;
+    link.removeAttribute('href');
+    link.removeAttribute('download');
+  }
   function show(current, text, pct, message) {
     status.hidden = false;
     label.textContent = text;
@@ -58,7 +63,7 @@
   }
   function fail(message) {
     show('error', 'No se pudo completar', 0, message || 'Probá con otro enlace o más tarde.');
-    link.hidden = true;
+    hideFile();
     finish();
   }
   async function json(url, options) {
@@ -99,9 +104,25 @@
     if (polling) return;
     const value = url.value.trim();
     if (!value) return url.focus();
+    try {
+      const u = new URL(value);
+      const host = u.hostname.toLowerCase();
+      if (u.protocol !== 'https:') throw Error('Pegá un enlace HTTPS válido.');
+      if (host === 'youtu.be' || host.endsWith('.youtu.be') || host === 'youtube.com' || host.endsWith('.youtube.com')) {
+        const segments = u.pathname.split('/').filter(Boolean);
+        const id = host.includes('youtu.be') ? segments[0] : u.searchParams.get('v') ||
+          (['shorts', 'live', 'embed', 'v'].includes(segments[0]) ? segments[1] : null);
+        if (!/^[A-Za-z0-9_-]{11}$/.test(id || '')) {
+          throw Error('Falta el identificador del video de YouTube. Copiá el enlace completo desde Compartir.');
+        }
+      }
+    } catch (err) {
+      fail(err instanceof TypeError ? 'Pegá un enlace válido con https://' : err.message);
+      return;
+    }
     submit.disabled = true;
     submit.firstElementChild.textContent = 'Preparando...';
-    link.hidden = true;
+    hideFile();
     show('queued', 'Iniciando descarga...', 0, 'Estamos preparando tu solicitud.');
     try {
       const r = await json('/api/download', {
