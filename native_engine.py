@@ -82,7 +82,8 @@ def meta_extract(page,base):
         if prop in ('og:title','twitter:title') and val: title=val
         if prop in ('og:video','og:video:url','og:video:secure_url','twitter:player:stream'):
             u=candidate(val,base)
-            if u: found.append({'url':u,'score':90})
+            if u and (is_media_url(u) or urlsplit(u).path.lower().endswith(('.mp4','.webm','.m3u8','.m4v'))):
+                found.append({'url':u,'score':90})
     for tag in re.findall(r'<(?:video|source|audio)\b[^>]*>',page,re.I):
         m=re.search(r'\b(?:src|data-src)\s*=\s*["\x27]([^"\x27]+)',tag,re.I)
         if m:
