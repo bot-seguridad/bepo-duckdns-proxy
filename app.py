@@ -98,10 +98,12 @@ def process(job_id, url, mode, quality):
         app.logger.warning('Download failed for platform=%s error_type=%s',
                            urlsplit(url).hostname, type(exc).__name__)
         message = str(exc)
-        if ('403 Client Error' in message or '429 Client Error' in message):
-            message = 'La plataforma bloqueó la descarga directa desde Render (403/429).'
+        if 'HTTP 429' in message or '429 Client Error' in message:
+            message = 'La plataforma está limitando las solicitudes desde este servidor (429). Esperá antes de intentar de nuevo.'
+        elif 'HTTP 403' in message or '403 Client Error' in message:
+            message = 'La plataforma rechazó la conexión desde Render (403). Cambiar de calidad no soluciona esta restricción.'
         elif 'HTTPError' in type(exc).__name__:
-            message = 'El servidor de origen rechazó la descarga. Probá con otro video público.'
+            message = 'El servidor de origen rechazó la descarga. Probá con otro contenido público.'
         if len(message) > 180:
             message = message[:177] + '...'
         update(job_id, status='error', error=message or 'Error al procesar el enlace.')
