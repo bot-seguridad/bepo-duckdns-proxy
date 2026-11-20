@@ -257,40 +257,55 @@ def youtube_extract(page, original, session):
     return formats
 
 def browser_intercept(url):
-    """Chromium-based equivalent of Android shouldInterceptRequest + video src inspection."""
-    results=[];title=None
+    """Chromium response interception: only return actual media, never a fake player link."""
+    results=[]
+    title=None
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',
-                args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-zygote',
-                      '--autoplay-policy=no-user-gesture-required'])
-            context=browser.new_context(user_agent=UA,viewport={'width':420,'height':820},locale='es-AR')
-            page=context.new_page()
-            def on_response(resp):
-                try:
-                    u=resp.url
-                    if (resp.request.resource_type=='media' or is_media_url(u)) and u.startswith('https://'):
-                        if '/videoplayback' not in u or 'range=' not in u:
-                            results.append({'url':u,'score':85})
-                except Exception:pass
-            page.on('response',on_response)
-            page.goto(url,wait_until='domcontentloaded',timeout=19000)
-            page.wait_for_timeout(4500)
+                args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu',
+                      '--no-zygote','--autoplay-policy=no-user-gesture-required'])
             try:
-                title=page.title()
-                sources=page.locator('video, audio, source').evaluate_all(
-                    'es => es.map(e => e.currentSrc || e.src).filter(Boolean)')
-                for u in sources:
-                    if u.startswith('https://'):results.append({'url':u,'score':95})
-            except Exception:pass
-            if not results:
+                context=browser.new_context(user_agent=UA,viewport={'width':420,'height':820},
+                    locale='es-AR')
+                page=context.new_page()
+                def on_response(resp):
+                    try:
+                        u=resp.url
+                        mime=resp.headers.get('content-type','').lower()
+                        is_media=('video/' in mime or 'audio/' in mime or
+                            'mpegurl' in mime or 'dash+xml' in mime)
+                        if ('html' in mime or 'json' in mime or 'yt-ump' in mime):
+                            return
+                        if u.startswith('https://') and (is_media or is_media_url(u)):
+                            if ('/videoplayback' not in u or 'range=' not in u):
+                                results.append({'url':u,'score':86})
+                    except Exception:
+                        pass
+                page.on('response',on_response)
+                page.goto(url,wait_until='domcontentloaded',timeout=20000)
+                page.wait_for_timeout(2500)
                 try:
-                    page.locator('video').first.click(timeout=1800)
-                    page.wait_for_timeout(1800)
-                except Exception:pass
-            context.close();browser.close()
-    except Exception:pass
+                    title=page.title()
+                    urls=page.locator('video, audio, source').evaluate_all(
+                        'nodes => nodes.map(n => n.currentSrc || n.src).filter(Boolean)')
+                    for u in urls:
+                        if u.startswith('https://'):
+                            results.append({'url':u,'score':92})
+                except Exception:
+                    pass
+                if not results:
+                    try:
+                        page.locator('video').first.click(timeout=1600)
+                        page.wait_for_timeout(2000)
+                    except Exception:
+                        pass
+                context.close()
+            finally:
+                browser.close()
+    except Exception:
+        pass
     return title,results
 
 def choose(found,mode,quality):
@@ -319,19 +334,33 @@ def choose(found,mode,quality):
 
 def extract_media(url,mode,quality):
     session=requests.Session()
-    found=[];title=''
+    found=[]
+    title=''
+    upstream_error=None
+    host=(urlsplit(url).hostname or '').lower()
+    is_youtube=(host=='youtu.be' or host.endswith('.youtu.be') or
+                host=='youtube.com' or host.endswith('.youtube.com'))
+    if is_youtube and not youtube_id(url):
+        raise ExtractError('El enlace de YouTube está incompleto. Copiá el enlace completo desde Compartir.')
     try:
         page=fetch(session,url)
         title,meta=meta_extract(page,url)
         found.extend(meta)
-        host=urlsplit(url).hostname or ''
-        if host.endswith(('youtube.com','youtu.be')):
-            found.extend(youtube_extract(page,url,session))
-    except (requests.RequestException,ExtractError,ValueError):pass
+        if is_youtube:
+            try:
+                found.extend(youtube_extract(page,url,session))
+            except ExtractError as exc:
+                upstream_error=str(exc)
+    except (requests.RequestException,ExtractError,ValueError) as exc:
+        upstream_error=str(exc)
     if not found:
-        t,media=browser_intercept(url)
+        browser_title, media = browser_intercept(url)
         found.extend(media)
-        title=title or t
+        title=title or browser_title
+    if not found and upstream_error:
+        raise ExtractError(upstream_error)
+    if not found and is_youtube:
+        raise ExtractError('YouTube no entregó un archivo directo. Puede requerir firmas, sesión o un token de reproducción.')
     result=choose(found,mode,quality)
     result['title']=(title or 'Video sin título')[:100]
     result['referer']=url
