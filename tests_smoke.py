@@ -2,7 +2,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import app, validate_link
+from app import app, validate_link, SEARCH_SELECTIONS, SEARCH_RATES
+from search_engine import walk_videos, get_text
 from native_engine import (
     ExtractError, SourceBlocked, fetch, youtube_id, youtube_extract, meta_extract, choose,
 )
@@ -52,6 +53,61 @@ class OrbitaSmokeTests(unittest.TestCase):
         self.assertTrue(formats[0]['has_video'])
         self.assertTrue(formats[0]['has_audio'])
         self.assertEqual(choose(formats, 'video', '720')['height'], 360)
+
+    def test_search_parser_finds_youtube_videos(self):
+        sample = {
+            'contents': {
+                'twoColumnSearchResultsRenderer': {
+                    'primaryContents': {
+                        'sectionListRenderer': {
+                            'contents': [{
+                                'itemSectionRenderer': {
+                                    'contents': [{'videoRenderer': {
+                                        'videoId': 'BaW_jenozKc',
+                                        'title': {'runs': [{'text': 'Video de prueba'}]},
+                                        'ownerText': {'runs': [{'text': 'Canal de prueba'}]},
+                                        'lengthText': {'simpleText': '2:37'}
+                                    }}]
+                                }
+                            }]
+                        }
+                    }
+                }
+            }
+        }
+        results = walk_videos(sample)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['id'], 'BaW_jenozKc')
+        self.assertEqual(results[0]['channel'], 'Canal de prueba')
+        self.assertEqual(results[0]['duration'], '2:37')
+
+    def test_search_then_download_from_selected_result(self):
+        result = {
+            'id':'BaW_jenozKc','title':'Video de prueba',
+            'channel':'Canal de prueba', 'duration':'2:37',
+            'thumbnail':'https://i.ytimg.com/vi/BaW_jenozKc/mqdefault.jpg',
+        }
+        client = app.test_client()
+        with patch('app.search_youtube', return_value=[result]):
+            response = client.get('/api/search?q=cancion+de+prueba')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['results'][0]['id'],'BaW_jenozKc')
+        with patch('app.EXECUTOR.submit') as executor:
+            response = client.post('/api/download', json={
+                'video_id':'BaW_jenozKc','mode':'video','quality':'720'
+            })
+        self.assertEqual(response.status_code, 202)
+        args = executor.call_args.args
+        self.assertEqual(args[2], 'https://www.youtube.com/watch?v=BaW_jenozKc')
+
+    def test_link_not_required_on_frontend(self):
+        html = Path('templates/index.html').read_text(encoding='utf-8')
+        js = Path('static/app.js').read_text(encoding='utf-8')
+        self.assertIn('id="search-query"',html)
+        self.assertIn('id="search-results"',html)
+        self.assertNotIn('id="source-url"',html)
+        self.assertIn('/api/search',js)
+        self.assertIn('video_id:selected.id',js)
 
     def test_source_403_and_429_no_retries(self):
         from unittest.mock import Mock
