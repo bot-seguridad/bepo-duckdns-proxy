@@ -55,6 +55,14 @@ class OrbitaSmokeTests(unittest.TestCase):
         self.assertTrue(formats[0]['has_audio'])
         self.assertEqual(choose(formats, 'video', '720')['height'], 360)
 
+    def test_vpn_diagnostic_route_and_zip_export(self):
+        response = app.test_client().get('/vpn-diagnostico')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Diagn\xc3\xb3stico de conexi\xc3\xb3n VPN', response.data)
+        self.assertIn(b'zipFile(entries)', response.data)
+        self.assertIn(b'api64.ipify.org', response.data)
+        self.assertNotIn(b'Vpn-Super-Unlimited-v2', response.data)
+
     def test_linux_proxy_adapter_defaults_to_safe_off(self):
         from unittest.mock import patch
         with patch.dict('os.environ', {'ORBITA_OUTBOUND_PROXY':''}):
