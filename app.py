@@ -5,6 +5,7 @@ import uuid
 import shutil
 import tempfile
 import threading
+import requests
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
