@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from native_engine import extract_media, download_media
+from native_engine import extract_media, download_media, youtube_id
 from flask import Flask, jsonify, render_template, request, send_file, abort
 
 app = Flask(__name__)
@@ -49,6 +49,10 @@ def validate_link(raw):
             raise ValueError
     except ValueError:
         raise ValueError('Usá un enlace HTTPS de YouTube, TikTok, Instagram u otra plataforma admitida.')
+    if (host == 'youtube.com' or host.endswith('.youtube.com') or
+            host == 'youtu.be' or host.endswith('.youtu.be')):
+        if not youtube_id(raw.strip()):
+            raise ValueError('El enlace de YouTube está incompleto. Abrí el video, tocá Compartir y copiá el enlace completo.')
     return raw.strip()
 
 
@@ -91,7 +95,13 @@ def process(job_id, url, mode, quality):
         extension = '.mp3' if mode == 'audio' else '.mp4'
         update(job_id, status='ready', percent=100, title=title, path=str(output), filename=name + extension)
     except Exception as exc:
+        app.logger.warning('Download failed for platform=%s error_type=%s',
+                           urlsplit(url).hostname, type(exc).__name__)
         message = str(exc)
+        if ('403 Client Error' in message or '429 Client Error' in message):
+            message = 'La plataforma bloqueó la descarga directa desde Render (403/429).'
+        elif 'HTTPError' in type(exc).__name__:
+            message = 'El servidor de origen rechazó la descarga. Probá con otro video público.'
         if len(message) > 180:
             message = message[:177] + '...'
         update(job_id, status='error', error=message or 'Error al procesar el enlace.')
@@ -116,7 +126,7 @@ def home():
 
 @app.route('/api/health')
 def health():
-    return jsonify(ok=True, engine='webview-request-interception', ffmpeg=bool(shutil.which('ffmpeg')))
+    return jsonify(ok=True, engine='webview-request-interception', ffmpeg=bool(shutil.which('ffmpeg')), chromium=os.path.isfile('/usr/bin/chromium'))
 
 
 @app.route('/api/download', methods=['POST'])
