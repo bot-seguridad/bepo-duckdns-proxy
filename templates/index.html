@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b14">
+  <meta name="description" content="Descargá videos y audio en segundos desde tus plataformas favoritas, gratis y sin anuncios.">
+  <title>Órbita | Video y audio, a tu manera</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%237b6cff'/%3E%3Ccircle cx='50' cy='50' r='24' fill='none' stroke='white' stroke-width='9'/%3E%3Cpath d='M50 27v45m0 0L36 58m14 14 14-14' fill='none' stroke='white' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <div class="page">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Órbita, inicio">
+        <span class="brand-mark"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="11" stroke="currentColor" stroke-width="3"/><path d="M20 10v19m0 0-6-6m6 6 6-6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span>órbita<span class="brand-dot">.</span></span>
+      </a>
+      <span class="top-pill"><span class="pulse"></span> Plataforma online</span>
+    </header>
+    <main>
+      <section class="hero">
+        <div class="eyebrow"><span class="spark">✦</span> TU ESPACIO PARA DESCARGAR</div>
+        <h1>Ese video que amás,<br><span class="gradient">ahora es tuyo.</span></h1>
+        <p class="hero-copy">Pegá el enlace, elegí video o audio y listo. Sin instalar nada, sin vueltas y desde cualquier dispositivo.</p>
+      </section>
+      <section class="download-card" aria-labelledby="form-title">
+        <div class="card-head"><div><div class="micro-label">NUEVA DESCARGA</div><h2 id="form-title">¿Qué querés guardar?</h2></div><div class="card-symbol">↗</div></div>
+        <form id="download-form">
+          <label class="field-label" for="source-url">Enlace del contenido</label>
+          <div class="url-box"><span class="link-icon">⌁</span><input type="url" id="source-url" name="url" placeholder="https://www.youtube.com/watch?v=..." required spellcheck="false" autocomplete="url"><button type="button" class="paste" id="paste-button">Pegar</button></div>
+          <div class="field-label space-top">Formato de descarga</div>
+          <div class="mode-tabs" role="radiogroup" aria-label="Formato de descarga"><button type="button" class="mode selected" data-mode="video" role="radio" aria-checked="true"><span class="mode-icon">▣</span><span>Video <small>MP4</small></span></button><button type="button" class="mode" data-mode="audio" role="radio" aria-checked="false"><span class="mode-icon">♫</span><span>Audio <small>MP3</small></span></button></div>
+          <label class="field-label space-top" for="quality">Calidad</label>
+          <div class="select-wrap"><select id="quality" name="quality"><option value="360">360p · liviano</option><option value="720" selected>720p · recomendado</option><option value="1080">1080p · alta calidad</option></select><span aria-hidden="true">⌄</span></div>
+          <button class="download-button" id="submit-button" type="submit"><span>Preparar descarga</span><span class="button-arrow">↓</span></button>
+        </form>
+        <div class="status" id="status" hidden aria-live="polite"><div class="status-top"><span class="status-label" id="status-label">Preparando el archivo...</span><span class="status-percent" id="status-percent">0%</span></div><div class="progress"><div id="progress-fill"></div></div><p id="status-detail">Esto puede tardar un poco según el sitio y el tamaño del archivo.</p><a id="file-link" class="file-link" hidden>Descargar archivo ↓</a></div>
+        <div class="card-foot"><span>◈ Sin registro</span><span>♡ Sin anuncios</span><span>⚡ Directo</span></div>
+      </section>
+      <section class="platforms"><div class="platform-label">COMPATIBLE CON TUS FAVORITOS</div><div class="platform-list"><span>YouTube</span><span>TikTok</span><span>Instagram</span><span>Facebook</span><span>SoundCloud</span><span>y más</span></div></section>
+      <section class="feature-grid"><div class="feature"><span class="feature-icon purple">↗</span><h3>Un link, mil posibilidades</h3><p>No necesitás instalar aplicaciones. Todo funciona desde tu navegador.</p></div><div class="feature"><span class="feature-icon turquoise">♫</span><h3>Video o solamente música</h3><p>Guardá el video en MP4 o extraé su audio en MP3.</p></div><div class="feature"><span class="feature-icon pink">◇</span><h3>Simple, limpio y sin anuncios</h3><p>Una experiencia pensada para que llegues directo a lo que buscás.</p></div></section>
+    </main>
+    <footer><span>© 2026 Órbita Media</span><span>Descargá únicamente contenido propio o autorizado. Algunas plataformas pueden limitar las descargas.</span></footer>
+  </div>
+</body>
+</html>
