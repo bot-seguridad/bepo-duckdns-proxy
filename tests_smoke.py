@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from app import app, validate_link, SEARCH_SELECTIONS, SEARCH_RATES
 from search_engine import walk_videos, get_text
+from vpn_linux import make_session, browser_proxy, public_proxy_status, outbound_endpoint, ProxySetupError
 from native_engine import (
     ExtractError, SourceBlocked, fetch, youtube_id, youtube_extract, meta_extract, choose,
 )
@@ -53,6 +54,37 @@ class OrbitaSmokeTests(unittest.TestCase):
         self.assertTrue(formats[0]['has_video'])
         self.assertTrue(formats[0]['has_audio'])
         self.assertEqual(choose(formats, 'video', '720')['height'], 360)
+
+    def test_linux_proxy_adapter_defaults_to_safe_off(self):
+        from unittest.mock import patch
+        with patch.dict('os.environ', {'ORBITA_OUTBOUND_PROXY':''}):
+            self.assertIsNone(outbound_endpoint())
+            self.assertIsNone(browser_proxy())
+            self.assertEqual(public_proxy_status(),'unconfigured')
+            self.assertFalse(make_session().proxies)
+
+    def test_linux_proxy_routes_search_and_download_transport(self):
+        from unittest.mock import patch
+        value='socks5://example.net:1080'
+        with patch.dict('os.environ', {'ORBITA_OUTBOUND_PROXY':value}):
+            session=make_session()
+            self.assertEqual(session.proxies['https'], 'socks5h://example.net:1080')
+            self.assertEqual(session.proxies['http'], 'socks5h://example.net:1080')
+            self.assertEqual(browser_proxy()['server'], 'socks5://example.net:1080')
+            self.assertEqual(public_proxy_status(),'configured')
+
+    def test_linux_proxy_never_leaks_credentials(self):
+        from unittest.mock import patch
+        value='socks5h://user:secret@example.net:1080'
+        with patch.dict('os.environ', {'ORBITA_OUTBOUND_PROXY':value}):
+            self.assertEqual(public_proxy_status(),'configured')
+            self.assertIn('user:secret@',make_session().proxies['https'])
+            self.assertEqual(browser_proxy()['server'], 'socks5://example.net:1080')
+            self.assertNotIn('secret', repr(public_proxy_status()))
+        with patch.dict('os.environ', {'ORBITA_OUTBOUND_PROXY':'not-a-proxy'}):
+            with self.assertRaises(ProxySetupError):
+                outbound_endpoint()
+            self.assertEqual(public_proxy_status(),'invalid')
 
     def test_search_parser_finds_youtube_videos(self):
         sample = {
