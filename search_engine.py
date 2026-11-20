@@ -9,6 +9,7 @@ import threading
 from urllib.parse import quote_plus
 
 import requests
+from vpn_linux import make_session
 from native_engine import BROWSER_HEADERS, ExtractError, SourceBlocked, fetch, parse_json_object
 
 _SEARCH_CACHE={}
@@ -94,7 +95,7 @@ def search_youtube(query):
         if now<_COOLDOWN_UNTIL:
             raise SourceBlocked(429)
 
-    session=requests.Session()
+    session=make_session()
     try:
         # The app's YouTubeProtocol search is first-party; fetch the public search HTML
         # to obtain the actual runtime Innertube context/key rather than bundling keys.
