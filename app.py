@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from native_engine import extract_media, download_media, youtube_id, SourceBlocked, ExtractError
+from vpn_linux import public_proxy_status
 from search_engine import search_youtube
 from flask import Flask, jsonify, render_template, request, send_file, abort
 
@@ -143,7 +144,7 @@ def home():
 
 @app.route('/api/health')
 def health():
-    return jsonify(ok=True, engine='webview-request-interception', ffmpeg=bool(shutil.which('ffmpeg')), chromium=os.path.isfile('/usr/bin/chromium'))
+    return jsonify(ok=True, engine='webview-request-interception', ffmpeg=bool(shutil.which('ffmpeg')), chromium=os.path.isfile('/usr/bin/chromium'), outbound_proxy=public_proxy_status())
 
 
 @app.route('/api/search')
