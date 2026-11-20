@@ -1,16 +1,9 @@
-# Órbita Media
+# Órbita Media · adaptación de Snaptube para Render
 
-Sitio de descargas de video y audio, con interfaz adaptable a celulares y backend Flask + yt-dlp + FFmpeg. No utiliza servicios privados de Snaptube ni credenciales de plataformas.
+Analizamos la APK Snaptube 7.69.0 para identificar el enfoque de extracción: `ExtractorWrapper`, análisis del reproductor, interceptación de recursos WebView (`shouldInterceptRequest`) y conversión de audio.
 
-## Deploy en Render
+El servidor usa una adaptación independiente de esa arquitectura con **Chromium/Playwright** para detectar peticiones multimedia, lectura directa de metadatos y HTML/JSON, streaming directo del origen y **FFmpeg exclusivamente para convertir o unir pistas**. Incluye análisis directo del reproductor YouTube e Innertube donde el propio sitio permite extraer URLs sin cifrado.
 
-- Type: Web Service
-- Runtime: Docker
-- Branch: orbita-media-web
-- Dockerfile: ./Dockerfile
-- Health: /api/health
-- Plan: Free para pruebas (puede suspenderse por inactividad)
+**No contiene yt-dlp ni emplea APIs externas de descarga.** Las bibliotecas originales del APK dependen de Android ARM y no pueden ejecutarse de manera idéntica en Render (Linux x86); el port no asegura soporte de todas las plataformas, tokens, DRM, firmas o archivos privados.
 
-Admite enlaces públicos de YouTube, TikTok, Instagram, Facebook, X, Vimeo, Dailymotion, SoundCloud, Reddit, Pinterest, Twitch y otras plataformas compatibles. Algunos proveedores pueden bloquear solicitudes por región, iniciar sesión o limitar datacenters. No elude DRM ni accede a contenido privado.
-
-Límite de 220 MiB por archivo y máximo dos descargas simultáneas. Caducidad de archivos a los 20 minutos, con limpieza al recibir solicitudes. No hay almacenamiento persistente.
+Límites: 220 MB/archivo, dos trabajos en paralelo, 6 solicitudes por IP en 10 minutos; enlaces temporales de 20 minutos. Render free puede demorar en despertar.
