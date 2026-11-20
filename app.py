@@ -10,7 +10,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from native_engine import extract_media, download_media, youtube_id
+from native_engine import extract_media, download_media, youtube_id, SourceBlocked, ExtractError
+from search_engine import search_youtube
 from flask import Flask, jsonify, render_template, request, send_file, abort
 
 app = Flask(__name__)
@@ -31,6 +32,8 @@ ALLOWED_DOMAINS = (
 )
 JOBS = {}
 RATES = defaultdict(deque)
+SEARCH_RATES = defaultdict(deque)
+SEARCH_SELECTIONS = {}
 LOCK = threading.RLock()
 EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='media')
 
@@ -65,6 +68,14 @@ def cleanup():
             if now - record['updated'] > JOB_LIFETIME:
                 JOBS.pop(key, None)
                 shutil.rmtree(WORKDIR / key, ignore_errors=True)
+        for vid,expiry in list(SEARCH_SELECTIONS.items()):
+            if expiry < now:
+                SEARCH_SELECTIONS.pop(vid, None)
+        for address, times in list(SEARCH_RATES.items()):
+            while times and now-times[0]>600:
+                times.popleft()
+            if not times:
+                SEARCH_RATES.pop(address,None)
         for address, times in list(RATES.items()):
             while times and now - times[0] > 600:
                 times.popleft()
@@ -134,14 +145,51 @@ def health():
     return jsonify(ok=True, engine='webview-request-interception', ffmpeg=bool(shutil.which('ffmpeg')), chromium=os.path.isfile('/usr/bin/chromium'))
 
 
+@app.route('/api/search')
+def search():
+    cleanup()
+    query = (request.args.get('q') or '').strip()
+    if not (2 <= len(query) <= 120):
+        return jsonify(error='Escribí al menos dos letras para buscar un video o una canción.'), 400
+    address=(request.headers.get('X-Forwarded-For','').split(',')[0] or request.remote_addr or 'unknown').strip()
+    with LOCK:
+        times=SEARCH_RATES[address]
+        now=time.time()
+        while times and now-times[0]>600:
+            times.popleft()
+        if len(times)>=20:
+            return jsonify(error='Demasiadas búsquedas seguidas. Probá nuevamente en unos minutos.'), 429
+        times.append(now)
+    try:
+        results=search_youtube(query)
+    except SourceBlocked as exc:
+        app.logger.warning('Search blocked by YouTube, status=%s',exc.status)
+        if exc.status==429:
+            return jsonify(error='YouTube está limitando las búsquedas desde el servidor Render (429). Probá más tarde.'), 503
+        return jsonify(error='YouTube rechazó la búsqueda desde Render (403).'), 503
+    except (requests.RequestException, ExtractError, ValueError) as exc:
+        app.logger.warning('Search failed: %s', type(exc).__name__)
+        message=str(exc)
+        return jsonify(error=message[:200]), 503
+    with LOCK:
+        expiry=time.time()+15*60
+        for item in results:
+            SEARCH_SELECTIONS[item['id']]=expiry
+    return jsonify(results=results,query=query)
+
+
 @app.route('/api/download', methods=['POST'])
 def start():
     cleanup()
     data = request.get_json(silent=True) or {}
-    try:
-        url = validate_link(data.get('url'))
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
+    video_id = data.get('video_id')
+    if not isinstance(video_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{11}',video_id):
+        return jsonify(error='Buscá un video y seleccioná un resultado antes de descargar.'), 400
+    with LOCK:
+        selected_until = SEARCH_SELECTIONS.get(video_id,0)
+    if selected_until < time.time():
+        return jsonify(error='Este resultado ya venció. Buscá nuevamente y elegí el video.'), 400
+    url = 'https://www.youtube.com/watch?v=' + video_id
     mode = data.get('mode')
     quality = str(data.get('quality'))
     if (mode == 'audio' and quality not in ('128', '192', '320')) or (mode == 'video' and quality not in ('360', '720', '1080')):
