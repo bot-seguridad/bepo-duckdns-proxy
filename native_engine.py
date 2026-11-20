@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit, parse_qs
 import requests
+from vpn_linux import make_session, browser_proxy, ffmpeg_network_proxy
 import threading
 
 _BROWSE_LIMIT = threading.BoundedSemaphore(1)
@@ -279,12 +280,14 @@ def browser_intercept(url):
     """Chromium response interception: only return actual media, never a fake player link."""
     results=[]
     title=None
+    proxy_cfg = browser_proxy()
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',
                 args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu',
-                      '--no-zygote','--autoplay-policy=no-user-gesture-required'])
+                      '--no-zygote','--autoplay-policy=no-user-gesture-required'],
+                **({'proxy': proxy_cfg} if proxy_cfg else {}))
             try:
                 context=browser.new_context(user_agent=UA,viewport={'width':420,'height':820},
                     locale='es-AR')
@@ -352,7 +355,7 @@ def choose(found,mode,quality):
     return result
 
 def extract_media(url,mode,quality):
-    session=requests.Session()
+    session=make_session()
     found=[]
     title=''
     upstream_error=None
@@ -415,7 +418,7 @@ def ffmpeg(args):
 def download_media(info,folder,mode,quality,progress):
     url=check_public_url(info['url'])
     ref=info.get('referer') or url
-    session=requests.Session()
+    session=make_session()
     jar=info.get('_cookies')
     if jar:
         session.cookies.update(jar)
@@ -423,7 +426,8 @@ def download_media(info,folder,mode,quality,progress):
     out=folder/('resultado.mp3' if mode=='audio' else 'resultado.mp4')
     if urlsplit(url).path.lower().endswith(('.m3u8','.mpd')):
         headers=f'Referer: {ref}\r\nUser-Agent: {UA}\r\n'
-        inp=['-headers',headers,'-i',url]
+        proxy_url=ffmpeg_network_proxy()
+        inp=([ '-http_proxy', proxy_url ] if proxy_url else [])+['-headers',headers,'-i',url]
     else:
         path=folder/'source.media'
         stream_download(session,url,path,ref,progress)
