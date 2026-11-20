@@ -21,7 +21,7 @@ class OrbitaSmokeTests(unittest.TestCase):
         content = Path('static/style.css').read_text(encoding='utf-8')
         self.assertIn('[hidden] { display: none !important; }', content)
         ui = Path('static/app.js').read_text(encoding='utf-8')
-        self.assertIn('hideFile()', ui)
+        self.assertIn('clearDownload()', ui)
 
     def test_youtube_full_link_required(self):
         self.assertEqual(youtube_id('https://youtube.com/watch?v=BaW_jenozKc'), 'BaW_jenozKc')
