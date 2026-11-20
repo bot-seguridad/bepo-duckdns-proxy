@@ -131,35 +131,129 @@ def parse_json_object(text,marker):
                     except ValueError:return None
     return None
 
-def youtube_extract(page,original,session):
-    configs=[]
-    player=parse_json_object(page,'ytInitialPlayerResponse')
-    if player:configs.append(player)
-    cfg=parse_json_object(page,'ytcfg.set(') or {}
-    key=cfg.get('INNERTUBE_API_KEY')
-    p=urlsplit(original)
-    vid=parse_qs(p.query).get('v',[None])[0]
-    if not vid and p.hostname=='youtu.be':vid=p.path.strip('/').split('/')[0]
-    if not vid and p.path.startswith('/shorts/'):vid=p.path.split('/')[2]
-    if key and vid:
-        for client,version in [('ANDROID','20.10.38'),('WEB','2.20261120.00.00')]:
+def youtube_id(original):
+    """Only accept complete YouTube video identifiers; reject empty watch?v= links."""
+    p = urlsplit(original)
+    host = (p.hostname or '').lower()
+    parts = [piece for piece in p.path.split('/') if piece]
+    if host == 'youtu.be' or host.endswith('.youtu.be'):
+        vid = parts[0] if parts else ''
+    elif host == 'youtube.com' or host.endswith('.youtube.com'):
+        vid = (parse_qs(p.query).get('v') or [''])[0]
+        if not vid and len(parts) > 1 and parts[0] in ('shorts','live','embed','v'):
+            vid = parts[1]
+    else:
+        return None
+    return vid if re.fullmatch(r'[A-Za-z0-9_-]{11}', vid or '') else None
+
+
+def youtube_extract(page, original, session):
+    """Extract public player formats directly from YouTube's web/embed/Android player data."""
+    vid = youtube_id(original)
+    if not vid:
+        raise ExtractError('El enlace de YouTube está incompleto. Usá Compartir y copiá la URL completa del video.')
+    configs = []
+    keys = []
+    context = {}
+    blocked = []
+    has_sabr = False
+    needs_signature = False
+    pages = [page]
+    try:
+        embed = fetch(session, 'https://www.youtube.com/embed/'+vid+'?hl=es')
+        pages.append(embed)
+    except (ExtractError, requests.RequestException, ValueError):
+        pass
+    for text in pages:
+        response = parse_json_object(text,'ytInitialPlayerResponse')
+        if isinstance(response,dict):
+            configs.append(response)
+        for match in re.finditer(r'"playerResponse"\s*:\s*("(?:\\.|[^"\\])*")', text):
             try:
-                r=session.post('https://www.youtube.com/youtubei/v1/player',
-                    params={'key':key},headers={**BROWSER_HEADERS,'Content-Type':'application/json','Origin':'https://www.youtube.com'},
-                    json={'videoId':vid,'context':{'client':{'clientName':client,'clientVersion':version,'hl':'es','gl':'AR'}}},timeout=12)
-                if r.ok:configs.append(r.json())
-            except (requests.RequestException,ValueError):pass
+                value = json.loads(json.loads(match.group(1)))
+                if isinstance(value,dict):
+                    configs.append(value)
+            except (ValueError, TypeError):
+                continue
+        cfg = parse_json_object(text,'ytcfg.set(') or {}
+        if cfg.get('INNERTUBE_CONTEXT'):
+            context = cfg['INNERTUBE_CONTEXT']
+        key = cfg.get('INNERTUBE_API_KEY')
+        if not key:
+            m = re.search(r'"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"',text)
+            if m:
+                key = m.group(1)
+        if key and key not in keys:
+            keys.append(key)
+    client_configs = [
+        ('ANDROID_VR', '1.75.0'),
+        ('TVHTML5_SIMPLY_EMBEDDED_PLAYER', '2.0'),
+        ('IOS', '21.44.1'),
+        ('ANDROID', '21.44.38'),
+        ('WEB', str((context.get('client') or {}).get('clientVersion') or '2.20261120.00.00')),
+    ]
+    if keys:
+        for client, version in client_configs:
+            try:
+                client_context = {'clientName':client, 'clientVersion':version, 'hl':'es', 'gl':'AR'}
+                if client == 'ANDROID':
+                    client_context.update({'androidSdkVersion':33, 'osName':'Android','osVersion':'13'})
+                if client == 'IOS':
+                    client_context.update({'deviceMake':'Apple','deviceModel':'iPhone16,2','osName':'iOS','osVersion':'18.3'})
+                body = {'videoId':vid,'context':{'client':client_context},'contentCheckOk':True,'racyCheckOk':True}
+                if client == 'TVHTML5_SIMPLY_EMBEDDED_PLAYER':
+                    body['context']['thirdParty']={'embedUrl':'https://www.youtube.com/'}
+                response = session.post('https://www.youtube.com/youtubei/v1/player',
+                    params={'key':keys[0]}, headers={**BROWSER_HEADERS,
+                    'Content-Type':'application/json','Origin':'https://www.youtube.com',
+                    'X-Youtube-Client-Name':{'ANDROID_VR':'28','TVHTML5_SIMPLY_EMBEDDED_PLAYER':'85','IOS':'5','ANDROID':'3','WEB':'1'}[client],
+                    'X-Youtube-Client-Version':version},
+                    json=body,timeout=8)
+                if response.ok:
+                    value = response.json()
+                    if isinstance(value,dict):
+                        configs.append(value)
+            except (requests.RequestException,ValueError):
+                continue
     formats=[]
-    for cfg in configs:
-        sd=cfg.get('streamingData') or {}
-        for f in sd.get('formats',[])+sd.get('adaptiveFormats',[]):
-            url=f.get('url')
-            if not url or not url.startswith('https://'):continue
+    for config in configs:
+        state = config.get('playabilityStatus') or {}
+        if state.get('status') not in (None,'OK'):
+            blocked.append(state.get('status','UNAVAILABLE'))
+        streams = config.get('streamingData') or {}
+        if streams.get('serverAbrStreamingUrl'):
+            has_sabr=True
+        for f in streams.get('formats',[])+streams.get('adaptiveFormats',[]):
+            raw=f.get('url')
+            if not raw:
+                if f.get('signatureCipher') or f.get('cipher'):
+                    needs_signature=True
+                continue
+            if not isinstance(raw,str) or not raw.startswith('https://'):
+                continue
             mime=f.get('mimeType','')
-            if 'video/' not in mime and 'audio/' not in mime:continue
-            formats.append({'url':url,'score':100,'height':f.get('height') or 0,
-                'bitrate':f.get('bitrate') or 0,'has_video':'video/' in mime,
-                'has_audio':'audio/' in mime or bool(f.get('audioQuality'))})
+            if 'video/' not in mime and 'audio/' not in mime:
+                continue
+            is_video='video/' in mime
+            is_audio='audio/' in mime
+            formats.append({'url':raw,'score':110 if 'mp4' in mime else 90,
+                'height':f.get('height') or 0,'bitrate':f.get('bitrate') or 0,
+                'has_video':is_video,
+                'has_audio':is_audio or bool(f.get('audioQuality')) or (f.get('itag') in (18,22))})
+        if streams.get('hlsManifestUrl'):
+            formats.append({'url':streams['hlsManifestUrl'],'score':45,
+                'has_video':True,'has_audio':True,'height':0})
+        if streams.get('dashManifestUrl'):
+            formats.append({'url':streams['dashManifestUrl'],'score':35,
+                'has_video':True,'has_audio':True,'height':0})
+    if not formats and (has_sabr or needs_signature):
+        raise ExtractError('YouTube exige un formato segmentado o una firma que este servidor no puede resolver para este video.')
+    if not formats and blocked:
+        status=blocked[0]
+        if status in ('LOGIN_REQUIRED','AGE_CHECK_REQUIRED'):
+            raise ExtractError('YouTube solicita iniciar sesión para este video. Solo se admiten videos públicos.')
+        if status in ('UNPLAYABLE','ERROR'):
+            raise ExtractError('YouTube no permite reproducir este video desde el servidor.')
     return formats
 
 def browser_intercept(url):
