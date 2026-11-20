@@ -85,9 +85,11 @@ def process(job_id, url, mode, quality):
     folder.mkdir(parents=True, exist_ok=True)
     def progress(status, percent):
         update(job_id, status=status, percent=percent)
+    phase='extracting'
     try:
         update(job_id, status='extracting', percent=2)
         info = extract_media(url, mode, quality)
+        phase='downloading'
         progress('downloading', 4)
         output = download_media(info, folder, mode, quality, progress)
         title = info.get('title') or 'Video sin título'
@@ -95,8 +97,9 @@ def process(job_id, url, mode, quality):
         extension = '.mp3' if mode == 'audio' else '.mp4'
         update(job_id, status='ready', percent=100, title=title, path=str(output), filename=name + extension)
     except Exception as exc:
-        app.logger.warning('Download failed for platform=%s error_type=%s',
-                           urlsplit(url).hostname, type(exc).__name__)
+        app.logger.warning('Download failed platform=%s phase=%s error_type=%s status=%s',
+                           urlsplit(url).hostname, phase, type(exc).__name__,
+                           getattr(exc, 'status', 'unknown'))
         message = str(exc)
         if 'HTTP 429' in message or '429 Client Error' in message:
             message = 'La plataforma está limitando las solicitudes desde este servidor (429). Esperá antes de intentar de nuevo.'
