@@ -142,6 +142,11 @@ def home():
     return render_template('index.html')
 
 
+@app.route('/vpn-diagnostico')
+def vpn_diagnostico():
+    return render_template('vpn-diagnostico.html')
+
+
 @app.route('/api/health')
 def health():
     return jsonify(ok=True, engine='webview-request-interception', ffmpeg=bool(shutil.which('ffmpeg')), chromium=os.path.isfile('/usr/bin/chromium'), outbound_proxy=public_proxy_status())
