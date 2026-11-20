@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#090b14">
-  <meta name="description" content="Descargá videos y audio en segundos desde tus plataformas favoritas, gratis y sin anuncios.">
+  <meta name="description" content="Buscá videos y canciones por nombre, elegí un resultado y descargá MP4 o MP3 desde una sola página.">
   <title>Órbita | Video y audio, a tu manera</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%237b6cff'/%3E%3Ccircle cx='50' cy='50' r='24' fill='none' stroke='white' stroke-width='9'/%3E%3Cpath d='M50 27v45m0 0L36 58m14 14 14-14' fill='none' stroke='white' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
@@ -24,26 +24,45 @@
       <section class="hero">
         <div class="eyebrow"><span class="spark">✦</span> TU ESPACIO PARA DESCARGAR</div>
         <h1>Ese video que amás,<br><span class="gradient">ahora es tuyo.</span></h1>
-        <p class="hero-copy">Pegá el enlace, elegí video o audio y listo. Sin instalar nada, sin vueltas y desde cualquier dispositivo.</p>
+        <p class="hero-copy">Buscá una canción o video, elegí el resultado y descargalo en MP4 o MP3. Sin copiar enlaces.</p>
       </section>
       <section class="download-card" aria-labelledby="form-title">
-        <div class="card-head"><div><div class="micro-label">NUEVA DESCARGA</div><h2 id="form-title">¿Qué querés guardar?</h2></div><div class="card-symbol">↗</div></div>
-        <form id="download-form">
-          <label class="field-label" for="source-url">Enlace del contenido</label>
-          <div class="url-box"><span class="link-icon">⌁</span><input type="url" id="source-url" name="url" placeholder="https://www.youtube.com/watch?v=..." required spellcheck="false" autocomplete="url"><button type="button" class="paste" id="paste-button">Pegar</button></div>
-          <div class="field-label space-top">Formato de descarga</div>
-          <div class="mode-tabs" role="radiogroup" aria-label="Formato de descarga"><button type="button" class="mode selected" data-mode="video" role="radio" aria-checked="true"><span class="mode-icon">▣</span><span>Video <small>MP4</small></span></button><button type="button" class="mode" data-mode="audio" role="radio" aria-checked="false"><span class="mode-icon">♫</span><span>Audio <small>MP3</small></span></button></div>
-          <label class="field-label space-top" for="quality">Calidad</label>
-          <div class="select-wrap"><select id="quality" name="quality"><option value="360">360p · liviano</option><option value="720" selected>720p · recomendado</option><option value="1080">1080p · alta calidad</option></select><span aria-hidden="true">⌄</span></div>
-          <button class="download-button" id="submit-button" type="submit"><span>Preparar descarga</span><span class="button-arrow">↓</span></button>
+        <div class="card-head"><div><div class="micro-label">BUSCADOR DE VIDEO Y MÚSICA</div><h2 id="form-title">¿Qué querés encontrar?</h2></div><div class="card-symbol">⌕</div></div>
+        <form id="search-form" class="search-form">
+          <label class="field-label" for="search-query">Nombre del video, canción o artista</label>
+          <div class="url-box"><span class="link-icon">⌕</span><input type="search" id="search-query" name="query" placeholder="Ej. Mi canción favorita" required minlength="2" maxlength="120" spellcheck="false" autocomplete="off"><button class="paste" type="submit" id="search-button">Buscar</button></div>
+          <p class="hint-text">No hace falta pegar enlaces. Buscamos directamente en YouTube.</p>
         </form>
-        <div class="status" id="status" hidden aria-live="polite"><div class="status-top"><span class="status-label" id="status-label">Preparando el archivo...</span><span class="status-percent" id="status-percent">0%</span></div><div class="progress"><div id="progress-fill"></div></div><p id="status-detail">Esto puede tardar un poco según el sitio y el tamaño del archivo.</p><a id="file-link" class="file-link" hidden>Descargar archivo ↓</a></div>
-        <div class="card-foot"><span>◈ Sin registro</span><span>♡ Sin anuncios</span><span>⚡ Directo</span></div>
+        <div class="search-state" id="search-state" hidden role="status" aria-live="polite"></div>
+        <section id="results-section" class="results-section" hidden aria-label="Videos encontrados">
+          <div class="results-heading"><span>RESULTADOS</span><span id="results-count"></span></div>
+          <div id="search-results" class="search-results"></div>
+        </section>
+        <div id="download-area" hidden>
+          <div class="selection-heading">VIDEO SELECCIONADO</div>
+          <div id="selected-media" class="selected-media">
+            <img id="selected-thumb" src="" alt="" loading="lazy">
+            <div class="selected-meta"><strong id="selected-title"></strong><span id="selected-channel"></span></div>
+            <button type="button" id="change-video" aria-label="Cambiar video">Cambiar</button>
+          </div>
+          <form id="download-form">
+            <div class="field-label space-top">¿Cómo querés guardarlo?</div>
+            <div class="mode-tabs" role="radiogroup" aria-label="Formato de descarga">
+              <button type="button" class="mode selected" data-mode="video" role="radio" aria-checked="true"><span class="mode-icon">▣</span><span>Video <small>MP4</small></span></button>
+              <button type="button" class="mode" data-mode="audio" role="radio" aria-checked="false"><span class="mode-icon">♫</span><span>Audio <small>MP3</small></span></button>
+            </div>
+            <label class="field-label space-top" for="quality">Calidad deseada</label>
+            <div class="select-wrap"><select id="quality" name="quality"><option value="360">360p · liviano</option><option value="720" selected>720p · recomendado</option><option value="1080">1080p · alta calidad</option></select><span aria-hidden="true">⌄</span></div>
+            <button class="download-button" id="submit-button" type="submit"><span>Descargar este video</span><span class="button-arrow">↓</span></button>
+          </form>
+        </div>
+        <div class="status" id="status" hidden aria-live="polite"><div class="status-top"><span class="status-label" id="status-label">Preparando el archivo...</span><span class="status-percent" id="status-percent">0%</span></div><div class="progress"><div id="progress-fill"></div></div><p id="status-detail">Estamos preparando tu descarga.</p><a id="file-link" class="file-link" hidden>Descargar archivo ↓</a></div>
+        <div class="card-foot"><span>◈ Sin enlaces manuales</span><span>♡ Sin anuncios</span><span>⚡ Descarga directa</span></div>
       </section>
-      <section class="platforms"><div class="platform-label">COMPATIBLE CON TUS FAVORITOS</div><div class="platform-list"><span>YouTube</span><span>TikTok</span><span>Instagram</span><span>Facebook</span><span>SoundCloud</span><span>y más</span></div></section>
-      <section class="feature-grid"><div class="feature"><span class="feature-icon purple">↗</span><h3>Un link, mil posibilidades</h3><p>No necesitás instalar aplicaciones. Todo funciona desde tu navegador.</p></div><div class="feature"><span class="feature-icon turquoise">♫</span><h3>Video o solamente música</h3><p>Guardá el video en MP4 o extraé su audio en MP3.</p></div><div class="feature"><span class="feature-icon pink">◇</span><h3>Simple, limpio y sin anuncios</h3><p>Una experiencia pensada para que llegues directo a lo que buscás.</p></div></section>
+      <section class="platforms"><div class="platform-label">BÚSQUEDA INTEGRADA DE VIDEOS</div><div class="platform-list"><span>YouTube</span><span>MP4</span><span>MP3</span><span>Sin pegar links</span></div></section>
+      <section class="feature-grid"><div class="feature"><span class="feature-icon purple">↗</span><h3>Buscá por nombre</h3><p>Ingresá el título o artista y elegí el video que quieras entre los resultados.</p></div><div class="feature"><span class="feature-icon turquoise">♫</span><h3>Video o solamente música</h3><p>Guardá el video en MP4 o extraé su audio en MP3.</p></div><div class="feature"><span class="feature-icon pink">◇</span><h3>Elegí y descargá</h3><p>No tenés que buscar enlaces: la web identifica el video que seleccionaste.</p></div></section>
     </main>
-    <footer><span>© 2026 Órbita Media</span><span>Descargá únicamente contenido propio o autorizado. Algunas plataformas pueden limitar las descargas.</span></footer>
+    <footer><span>© 2026 Órbita Media</span><span>Descargá únicamente contenido propio o autorizado. La búsqueda y descarga requieren acceso a YouTube. Puede limitar conexiones desde servidores.</span></footer>
   </div>
 </body>
 </html>
