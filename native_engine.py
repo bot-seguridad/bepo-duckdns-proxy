@@ -201,12 +201,11 @@ def youtube_extract(page, original, session):
         if key and key not in keys:
             keys.append(key)
     client_configs = [
-        ('ANDROID_VR', '1.75.0'),
-        ('TVHTML5_SIMPLY_EMBEDDED_PLAYER', '2.0'),
-        ('IOS', '21.44.1'),
         ('ANDROID', '21.44.38'),
         ('WEB', str((context.get('client') or {}).get('clientVersion') or '2.20261120.00.00')),
+        ('TVHTML5_SIMPLY_EMBEDDED_PLAYER', '2.0'),
     ]
+    source_block_status=None
     if keys:
         for client, version in client_configs:
             try:
@@ -224,6 +223,9 @@ def youtube_extract(page, original, session):
                     'X-Youtube-Client-Name':{'ANDROID_VR':'28','TVHTML5_SIMPLY_EMBEDDED_PLAYER':'85','IOS':'5','ANDROID':'3','WEB':'1'}[client],
                     'X-Youtube-Client-Version':version},
                     json=body,timeout=8)
+                if response.status_code in (403,429):
+                    source_block_status=response.status_code
+                    break
                 if response.ok:
                     value = response.json()
                     if isinstance(value,dict):
@@ -261,6 +263,8 @@ def youtube_extract(page, original, session):
         if streams.get('dashManifestUrl'):
             formats.append({'url':streams['dashManifestUrl'],'score':35,
                 'has_video':True,'has_audio':True,'height':0})
+    if not formats and source_block_status:
+        raise SourceBlocked(source_block_status)
     if not formats and (has_sabr or needs_signature):
         raise ExtractError('YouTube exige un formato segmentado o una firma que este servidor no puede resolver para este video.')
     if not formats and blocked:
