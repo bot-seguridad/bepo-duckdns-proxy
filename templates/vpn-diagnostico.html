@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0d1020"><title>Órbita VPN · Diagnóstico local</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+*{box-sizing:border-box}body{background:linear-gradient(145deg,#101124,#10131d);color:#f1edff;min-height:100vh;margin:0;padding:20px}
+main{max-width:570px;margin:24px auto 60px}.brand{font-size:21px;font-weight:850;letter-spacing:-.7px}.brand span{color:#ad9dff}
+.eyebrow{color:#ae9ffc;font-size:11px;letter-spacing:1.7px;font-weight:750;margin:40px 0 10px}h1{font-size:32px;line-height:1.1;margin:0 0 15px;letter-spacing:-1px}
+p{color:#b8b9ce;line-height:1.55;font-size:14px}.card{background:#1c1d33;border:1px solid #393953;border-radius:16px;padding:20px;margin:17px 0}
+.card strong{font-size:15px}button{font-family:inherit;font-size:15px;cursor:pointer}button:focus-visible{outline:2px solid #ad9dff;outline-offset:3px}
+button.primary,button.secondary{display:block;width:100%;border:0;padding:15px;border-radius:12px;margin:12px 0;font-weight:750}
+button.primary{background:linear-gradient(110deg,#8976fc,#6657be);color:white}.secondary{background:#292744;color:#e8dfff;border:1px solid #645c91!important}
+button:disabled{opacity:.45;cursor:wait}.stat{display:flex;justify-content:space-between;gap:15px;border-bottom:1px solid #343349;padding:13px 0;color:#aeb0c8;font-size:13px}.stat b{color:#e6dfff;text-align:right;overflow-wrap:anywhere}
+.state{padding:13px 15px;border-radius:11px;background:#222640;color:#c9c6ff;margin:12px 0;min-height:43px;font-size:13px}
+.note{font-size:12px;color:#9798b1}code{background:#29283f;padding:3px 5px;border-radius:5px;color:#cdbfff}
+small{font-size:11px;color:#a5a6bd}.success{color:#91eac4}.warn{color:#ffd292}.footer{margin-top:30px;border-top:1px solid #38374e;padding-top:14px;font-size:12px}
+</style>
+</head>
+<body><main>
+<div class="brand">◉ órbita<span>.</span></div>
+<div class="eyebrow">HERRAMIENTA LOCAL PARA ANDROID</div>
+<h1>Diagnóstico de conexión VPN</h1>
+<p>Compará la IP de salida de tu celular antes y después de activar la VPN. La medición se ejecuta <b>en tu navegador</b> y el ZIP se arma en tu celular.</p>
+<div class="card"><strong>1. Antes de activar la VPN</strong><p>Desconectá VPN Super en tu celular. Luego tocá el botón para guardar la primera medición.</p>
+<button id="before" type="button" class="primary">Medir sin VPN</button>
+<div class="stat"><span>IP sin VPN</span><b id="before-ip">Pendiente</b></div></div>
+<div class="card"><strong>2. Con la VPN activada</strong><p>Activá VPN Super desde Android, volvé a esta pestaña y guardá la segunda medición. Si el navegador se reinicia, intentá abrir la página otra vez.</p>
+<button id="after" type="button" class="primary">Medir con VPN</button>
+<div class="stat"><span>IP con VPN</span><b id="after-ip">Pendiente</b></div>
+<div class="stat"><span>¿Cambió la IP?</span><b id="comparison">Aún sin datos</b></div></div>
+<div class="card"><strong>3. Guardar resultados</strong><p>Exporta un ZIP con las dos mediciones, fecha y comparación. Se guarda en tu dispositivo.</p>
+<button id="export" type="button" class="secondary">Descargar ZIP de diagnóstico</button>
+<div class="state" id="status" role="status" aria-live="polite">No hay mediciones guardadas todavía.</div>
+<small>Los datos permanecen en este navegador salvo las solicitudes al servicio público para consultar tu IP.</small></div>
+<div class="card"><strong>¿Qué puede averiguar este diagnóstico?</strong><p>Si tu conexión cambia de IP pública cuando encendés la VPN. Eso permite comprobar si tu celular está saliendo por una dirección distinta.</p>
+<p class="note"><b>Lo que no puede hacer:</b> leer los certificados, direcciones internas, configuraciones privadas ni claves de otra app Android. Para conectar Render se necesita un perfil VPN o proxy remoto que tengas autorización para utilizar. Este ZIP no lo proporciona.</p></div>
+<p class="footer">Órbita VPN Diagnóstico · Sin acceso a contraseñas · Sin permisos especiales · Usá el servicio de VPN conforme a sus condiciones.</p>
+</main>
+<script>
+(() => {
+'use strict';
+const $=id=>document.getElementById(id);
+let before=null,after=null;
+try{before=JSON.parse(localStorage.getItem('orbita-vpn-before')||'null');after=JSON.parse(localStorage.getItem('orbita-vpn-after')||'null');}catch(_){before=null;after=null;}
+function update(){
+ $('before-ip').textContent=before?.ip||'Pendiente';
+ $('after-ip').textContent=after?.ip||'Pendiente';
+ $('comparison').textContent=before?.ip&&after?.ip?(before.ip!==after.ip?'Sí, la IP cambió':'No, misma IP'):'Aún sin datos';
+ $('comparison').className=before?.ip&&after?.ip&&before.ip!==after.ip?'success':'';
+ $('export').disabled=!(before||after);
+}
+const setStatus=(msg)=>{$('status').textContent=msg;};
+const endpoints=['https://api64.ipify.org?format=json','https://api.ipify.org?format=json'];
+async function publicIp(){
+ let errors=[];
+ for(const endpoint of endpoints){
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),9000);
+  try{
+    const response=await fetch(endpoint,{signal:controller.signal,cache:'no-store',referrerPolicy:'no-referrer'});
+    if(!response.ok)throw Error('HTTP '+response.status);
+    const body=await response.json();
+    if(typeof body.ip!=='string'||!/^[a-zA-Z0-9.:]+$/.test(body.ip)||body.ip.length>55)throw Error('IP inválida');
+    return {ip:body.ip,source:new URL(endpoint).hostname};
+  }catch(err){errors.push(err.name==='AbortError'?'Tiempo agotado':err.message||'Error desconocido');}
+  finally{clearTimeout(timer);}
+ }
+ throw Error('No se pudo comprobar la IP. '+errors.join(' / '));
+}
+async function measure(type){
+ const b=$('before'),a=$('after');b.disabled=a.disabled=true;
+ setStatus('Consultando IP pública desde este celular...');
+ try{
+  const result=await publicIp();
+  const sample={label:type==='before'?'sin VPN':'con VPN',timestampUtc:new Date().toISOString(),ip:result.ip,provider:result.source,
+    online:navigator.onLine,networkType:navigator.connection?.effectiveType||'no disponible',browserPlatform:'navegador móvil'};
+  if(type==='before'){before=sample;localStorage.setItem('orbita-vpn-before',JSON.stringify(sample));}
+  else{after=sample;localStorage.setItem('orbita-vpn-after',JSON.stringify(sample));}
+  update();setStatus('Medición guardada. '+(type==='before'?'Ahora activá la VPN y repetí la medición.':'Ya podés exportar el ZIP.'));
+ }catch(err){setStatus('No se pudo medir: '+err.message+' Revisá la conexión y volvé a intentar.');}
+ finally{b.disabled=a.disabled=false;}
+}
+$('before').addEventListener('click',()=>measure('before'));
+$('after').addEventListener('click',()=>measure('after'));
+const te=new TextEncoder();
+const table=new Uint32Array(256);
+for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;table[n]=c>>>0;}
+function crc32(bytes){let c=-1;for(const b of bytes)c=table[(c^b)&255]^(c>>>8);return(c^-1)>>>0;}
+function write16(view,off,n){view.setUint16(off,n,true);}
+function write32(view,off,n){view.setUint32(off,n,true);}
+function u8(size){return new Uint8Array(size);}
+function zipFile(entries){
+ const chunks=[],directory=[];let offset=0;
+ for(const [filename,text] of entries){
+   const name=te.encode(filename),data=te.encode(text),crc=crc32(data),head=u8(30),v=new DataView(head.buffer);
+   write32(v,0,0x04034b50);write16(v,4,20);write16(v,6,0x0800);write16(v,8,0);write16(v,10,0);write16(v,12,0);
+   write32(v,14,crc);write32(v,18,data.length);write32(v,22,data.length);write16(v,26,name.length);write16(v,28,0);
+   chunks.push(head,name,data);
+   const cent=u8(46),dv=new DataView(cent.buffer);
+   write32(dv,0,0x02014b50);write16(dv,4,20);write16(dv,6,20);write16(dv,8,0x0800);
+   write16(dv,10,0);write16(dv,12,0);write16(dv,14,0);write32(dv,16,crc);write32(dv,20,data.length);
+   write32(dv,24,data.length);write16(dv,28,name.length);write16(dv,30,0);write16(dv,32,0);
+   write16(dv,34,0);write16(dv,36,0);write32(dv,38,0);write32(dv,42,offset);
+   directory.push(cent,name);offset+=head.length+name.length+data.length;
+ }
+ const dirLen=directory.reduce((n,item)=>n+item.length,0),end=u8(22),v=new DataView(end.buffer);
+ write32(v,0,0x06054b50);write16(v,4,0);write16(v,6,0);write16(v,8,entries.length);write16(v,10,entries.length);
+ write32(v,12,dirLen);write32(v,16,offset);write16(v,20,0);
+ return new Blob([...chunks,...directory,end],{type:'application/zip'});
+}
+$('export').addEventListener('click',()=>{
+ if(!before&&!after){setStatus('Primero realizá al menos una medición.');return;}
+ const summary={createdAtUtc:new Date().toISOString(),beforeRecorded:!!before,afterRecorded:!!after,
+  beforeIp:before?.ip||null,afterIp:after?.ip||null,changed:before?.ip&&after?.ip?before.ip!==after.ip:null};
+ const files=[['LEEME.txt','Diagnóstico Órbita VPN.\n\nNo extrae claves, perfiles privados ni conexiones del proveedor.\nSe midieron IPs públicas desde el navegador del usuario.\nNo configura automáticamente una VPN en Render.\n'],
+  ['resumen.json',JSON.stringify(summary,null,2)+'\n']];
+ if(before)files.push(['antes-sin-vpn.json',JSON.stringify(before,null,2)+'\n']);
+ if(after)files.push(['despues-con-vpn.json',JSON.stringify(after,null,2)+'\n']);
+ const url=URL.createObjectURL(zipFile(files));
+ const a=document.createElement('a');a.href=url;a.download='orbita-vpn-diagnostico.zip';document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),30000);
+ setStatus('ZIP generado en tu celular. Revisá los archivos antes de compartirlos.');
+});
+update();
+})();
+</script>
+</body></html>
