@@ -50,6 +50,7 @@ def fetch(session, url, stream=False, referer=None):
             continue
         r.raise_for_status()
         if stream: return r
+        r.raw.decode_content = True
         raw = r.raw.read(7*1024*1024+1)
         encoding = r.encoding or 'utf-8'
         r.close()
