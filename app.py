@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import yt_dlp
+from native_engine import extract_media, download_media
 from flask import Flask, jsonify, render_template, request, send_file, abort
 
 app = Flask(__name__)
@@ -79,72 +79,17 @@ def update(job_id, **fields):
 def process(job_id, url, mode, quality):
     folder = WORKDIR / job_id
     folder.mkdir(parents=True, exist_ok=True)
-
-    def hook(data):
-        if data.get('status') == 'downloading':
-            done = data.get('downloaded_bytes') or 0
-            if done > MAX_FILE_BYTES:
-                raise yt_dlp.utils.DownloadError('El archivo supera el límite de 220 MB.')
-            size = data.get('total_bytes') or data.get('total_bytes_estimate') or 0
-            pct = min(98, round(done / size * 100)) if size else 0
-            update(job_id, status='downloading', percent=pct)
-        elif data.get('status') == 'finished':
-            update(job_id, status='processing', percent=99)
-
-    opts = {
-        'outtmpl': str(folder / '%(id)s.%(ext)s'),
-        'noplaylist': True,
-        'ignoreerrors': False,
-        'quiet': True,
-        'no_warnings': True,
-        'restrictfilenames': True,
-        'overwrites': False,
-        'cachedir': False,
-        'socket_timeout': 25,
-        'retries': 2,
-        'fragment_retries': 2,
-        'concurrent_fragment_downloads': 3,
-        'max_filesize': MAX_FILE_BYTES,
-        'progress_hooks': [hook],
-        'windowsfilenames': True,
-    }
-    if mode == 'audio':
-        opts.update({
-            'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': quality,
-            }],
-        })
-    else:
-        height = int(quality)
-        opts.update({
-            'format': (
-                'bv*[height<={0}][ext=mp4]+ba[ext=m4a]/'
-                'b[height<={0}][ext=mp4]/'
-                'bv*[height<={0}]+ba/'
-                'b[height<={0}]/best'
-            ).format(height),
-            'merge_output_format': 'mp4',
-            'postprocessors': [{'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mp4'}],
-        })
+    def progress(status, percent):
+        update(job_id, status=status, percent=percent)
     try:
-        update(job_id, status='extracting')
-        with yt_dlp.YoutubeDL(opts) as downloader:
-            info = downloader.extract_info(url, download=True)
-            if not info:
-                raise ValueError('La plataforma no entregó un archivo descargable.')
-            title = (info.get('title') or 'video')[:110]
-        wanted = '.mp3' if mode == 'audio' else '.mp4'
-        outputs = [p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == wanted]
-        if not outputs:
-            raise ValueError('No se pudo obtener el formato solicitado.')
-        output = max(outputs, key=lambda p: p.stat().st_size)
-        if output.stat().st_size > MAX_FILE_BYTES:
-            raise ValueError('El archivo supera el límite de 220 MB.')
+        update(job_id, status='extracting', percent=2)
+        info = extract_media(url, mode, quality)
+        progress('downloading', 4)
+        output = download_media(info, folder, mode, quality, progress)
+        title = info.get('title') or 'Video sin título'
         name = re.sub(r'[^\w .()\-]+', '_', title, flags=re.UNICODE).strip(' ._') or 'descarga'
-        update(job_id, status='ready', percent=100, title=title, path=str(output), filename=name + wanted)
+        extension = '.mp3' if mode == 'audio' else '.mp4'
+        update(job_id, status='ready', percent=100, title=title, path=str(output), filename=name + extension)
     except Exception as exc:
         message = str(exc)
         if len(message) > 180:
@@ -171,7 +116,7 @@ def home():
 
 @app.route('/api/health')
 def health():
-    return jsonify(ok=True, engine='yt-dlp', ffmpeg=bool(shutil.which('ffmpeg')))
+    return jsonify(ok=True, engine='webview-request-interception', ffmpeg=bool(shutil.which('ffmpeg')))
 
 
 @app.route('/api/download', methods=['POST'])
