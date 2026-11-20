@@ -7,5 +7,7 @@ RUN pip install -r requirements.txt
 COPY app.py native_engine.py ./
 COPY templates ./templates
 COPY static ./static
+COPY tests_smoke.py ./
+RUN python -m py_compile app.py native_engine.py tests_smoke.py && python -m unittest tests_smoke -v
 EXPOSE 10000
 CMD ["sh","-c","exec gunicorn --bind 0.0.0.0:${PORT:-10000} --workers 1 --threads 6 --timeout 240 app:app"]
