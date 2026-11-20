@@ -13,6 +13,9 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit, parse_qs
 import requests
+import threading
+
+_BROWSE_LIMIT = threading.BoundedSemaphore(1)
 
 MAX_BYTES = 220*1024*1024
 UA = 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'
@@ -20,6 +23,14 @@ BROWSER_HEADERS = {'User-Agent': UA, 'Accept-Language': 'es-AR,es;q=0.9,en;q=0.7
 
 class ExtractError(ValueError):
     pass
+
+class SourceBlocked(ExtractError):
+    def __init__(self, status):
+        self.status = status
+        if status == 403:
+            super().__init__('HTTP 403: YouTube o el sitio de origen rechazó el acceso del servidor Render.')
+        else:
+            super().__init__('HTTP 429: YouTube o el sitio de origen está limitando las solicitudes. Probá más tarde.')
 
 def check_public_url(url):
     p = urlsplit(url)
@@ -48,6 +59,10 @@ def fetch(session, url, stream=False, referer=None):
             if not dest: raise ExtractError('Redirección sin destino.')
             url = urljoin(url,dest)
             continue
+        if r.status_code in (403,429):
+            status = r.status_code
+            r.close()
+            raise SourceBlocked(status)
         r.raise_for_status()
         if stream: return r
         r.raw.decode_content = True
@@ -351,6 +366,10 @@ def extract_media(url,mode,quality):
                 found.extend(youtube_extract(page,url,session))
             except ExtractError as exc:
                 upstream_error=str(exc)
+    except SourceBlocked as exc:
+        upstream_error=str(exc)
+        if exc.status == 429:
+            raise
     except (requests.RequestException,ExtractError,ValueError) as exc:
         upstream_error=str(exc)
     if not found:
@@ -364,6 +383,7 @@ def extract_media(url,mode,quality):
     result=choose(found,mode,quality)
     result['title']=(title or 'Video sin título')[:100]
     result['referer']=url
+    result['_cookies']=session.cookies.copy()
     return result
 
 def stream_download(session,url,path,referer,progress):
@@ -391,6 +411,10 @@ def ffmpeg(args):
 def download_media(info,folder,mode,quality,progress):
     url=check_public_url(info['url'])
     ref=info.get('referer') or url
+    session=requests.Session()
+    jar=info.get('_cookies')
+    if jar:
+        session.cookies.update(jar)
     folder=Path(folder)
     out=folder/('resultado.mp3' if mode=='audio' else 'resultado.mp4')
     if urlsplit(url).path.lower().endswith(('.m3u8','.mpd')):
@@ -398,14 +422,14 @@ def download_media(info,folder,mode,quality,progress):
         inp=['-headers',headers,'-i',url]
     else:
         path=folder/'source.media'
-        stream_download(requests.Session(),url,path,ref,progress)
+        stream_download(session,url,path,ref,progress)
         inp=['-i',str(path)]
     progress('processing',96)
     if mode=='audio':
         args=inp+['-vn','-map','0:a:0','-c:a','libmp3lame','-b:a',quality+'k',str(out)]
     elif info.get('audio_url'):
         path=folder/'source_audio.media'
-        stream_download(requests.Session(),check_public_url(info['audio_url']),path,ref,progress)
+        stream_download(session,check_public_url(info['audio_url']),path,ref,progress)
         args=inp+['-i',str(path),'-map','0:v:0','-map','1:a:0',
             '-c:v','copy','-c:a','aac','-movflags','+faststart',str(out)]
     else:
