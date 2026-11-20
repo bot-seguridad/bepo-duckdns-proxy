@@ -25,7 +25,9 @@ class ProxyEndpoint:
 
     @property
     def server(self):
-        return f"{self.scheme}://{self.host}:{self.port}"
+        # Chromium accepts socks5:// while requests uses socks5h:// for remote DNS.
+        scheme = "socks5" if self.scheme == "socks5h" else self.scheme
+        return f"{scheme}://{self.host}:{self.port}"
 
     @property
     def requests_url(self):
